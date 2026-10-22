@@ -22,26 +22,42 @@ export function useLevyAuction(poolId: `0x${string}` | undefined) {
     queryKey: ['levy', 'auction', poolId],
     enabled: Boolean(poolId && LEVY_HOOK_ADDRESS),
     refetchInterval: 3_000,
+
     queryFn: async () => {
       if (!poolId) return null;
+
+      // Read current epoch
       const epoch = await readContract(levyPublicClient, {
         address: LEVY_HOOK_ADDRESS,
         abi: levyHookAbi,
         functionName: 'currentEpoch',
         args: [poolId],
       });
+
+      // Read auction information
       const auction = await readContract(levyPublicClient, {
         address: LEVY_HOOK_ADDRESS,
         abi: levyHookAbi,
         functionName: 'auctions',
         args: [poolId, epoch],
       });
-      const lpPool = await readContract(levyPublicClient, {
-        address: LEVY_HOOK_ADDRESS,
-        abi: levyHookAbi,
-        functionName: 'lpPool',
-        args: [poolId, epoch],
-      });
+
+      // lpPool can revert when no LP pool exists yet.
+      // Treat that as an empty LP pool instead of failing
+      // the entire auction query.
+      let lpPool = 0n;
+
+      try {
+        lpPool = await readContract(levyPublicClient, {
+          address: LEVY_HOOK_ADDRESS,
+          abi: levyHookAbi,
+          functionName: 'lpPool',
+          args: [poolId, epoch],
+        });
+      } catch {
+        lpPool = 0n;
+      }
+
       return {
         epoch,
         epochStart: auction[0],
